@@ -138,7 +138,17 @@ node server.js
 
 ## 📦 生产部署
 
-### 使用 PM2（推荐）
+### 🚀 一键全自动部署与更新 (推荐)
+
+无论是首次在服务器上安装，还是后续对已有部署进行更新，均可登录远程服务器直接执行以下一键自举部署脚本。脚本会自动完成克隆代码、更新代码、配置 Node.js & PM2 环境、安装依赖包并进行平滑重启：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Level6me/Agent-Mail-Client/main/deploy.sh | bash
+```
+
+### 🛠️ 手动部署步骤
+
+#### 使用 PM2 运行
 
 ```bash
 # 安装 PM2
