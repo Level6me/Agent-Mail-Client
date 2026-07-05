@@ -3,3 +3,7 @@ node_modules/
 *.log
 .DS_Store
 downloads/
+logs/
+mail_cache.db
+*.db-wal
+*.db-shm
