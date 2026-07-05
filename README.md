@@ -87,36 +87,44 @@ Agent-Mail-Client/
 
 ---
 
-## 🚀 快速开始
+## 🚀 部署与运行
 
-### 1. 克隆项目
+### 1. 一键全自动部署与更新 (强烈推荐 - 生产服务器)
 
+无论是首次在服务器上安装，还是后续对已有部署进行更新，均可登录远程服务器直接执行以下一键自举部署脚本。脚本会自动完成克隆/拉取代码、配置 Node.js & PM2 环境、安装依赖包并进行应用平滑重启：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Level6me/Agent-Mail-Client/main/deploy.sh | bash
+```
+
+---
+
+### 2. 本地手动启动 (调试与开发)
+
+如果你希望在本地计算机上运行以进行调试或开发：
+
+#### (1) 克隆项目
 ```bash
 git clone https://github.com/Level6me/Agent-Mail-Client.git
 cd Agent-Mail-Client
 ```
 
-### 2. 安装依赖
-
+#### (2) 安装依赖
 ```bash
 npm install
 ```
 
-### 3. 安装 agently-cli
+#### (3) 安装 agently-cli
 安装底层的 QQ 邮箱命令行工具（客户端会自动处理授权跳转，无需手动在终端执行登录）：
-
 ```bash
 npm install -g @tencent-qqmail/agently-cli
 ```
 
-### 4. 配置环境变量
-
+#### (4) 配置环境变量
 ```bash
 cp .env.example .env
 ```
-
-编辑 `.env` 文件：
-
+编辑 `.env` 文件，按需修改运行端口及管理员凭证：
 ```env
 PORT=3000
 NODE_ENV=production
@@ -126,44 +134,32 @@ ADMIN_USER=admin
 ADMIN_PASSWORD=your_secure_password
 ```
 
-### 5. 启动服务
-
+#### (5) 启动服务
 ```bash
 node server.js
 ```
-
-访问 **http://localhost:3000**，使用管理员凭证登录即可。
+访问 **http://localhost:3000**，使用配置好的管理员凭证登录即可。
 
 ---
 
-## 📦 生产部署
+### 3. 服务器手动进程管理 (可选 - 生产配置)
 
-### 🚀 一键全自动部署与更新 (推荐)
+若不想使用一键脚本，你可以手动配置 PM2 或 systemd 进行服务守护：
 
-无论是首次在服务器上安装，还是后续对已有部署进行更新，均可登录远程服务器直接执行以下一键自举部署脚本。脚本会自动完成克隆代码、更新代码、配置 Node.js & PM2 环境、安装依赖包并进行平滑重启：
-
+#### 使用 PM2 进程守护
 ```bash
-curl -sSL https://raw.githubusercontent.com/Level6me/Agent-Mail-Client/main/deploy.sh | bash
-```
-
-### 🛠️ 手动部署步骤
-
-#### 使用 PM2 运行
-
-```bash
-# 安装 PM2
+# 全局安装 PM2
 npm install -g pm2
 
 # 启动服务
 pm2 start server.js --name agent-mail-client
 
-# 设置开机自启
+# 保存进程列表并设置开机自启
 pm2 save
 pm2 startup
 ```
 
-### 使用 systemd
-
+#### 使用 systemd 守护服务
 ```bash
 sudo tee /etc/systemd/system/agent-mail-client.service > /dev/null <<EOF
 [Unit]
