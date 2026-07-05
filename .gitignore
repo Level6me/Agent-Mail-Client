@@ -4,6 +4,7 @@ node_modules/
 .DS_Store
 downloads/
 logs/
-mail_cache.db
+mail_cache*.db
+*.db
 *.db-wal
 *.db-shm
