@@ -65,6 +65,6 @@ sudo systemctl restart nginx
 
 echo "✅ 部署完成！"
 echo "📝 下一步："
-echo "1. 运行 'agently-cli auth login' 完成邮箱授权"
-echo "2. 修改 /etc/nginx/sites-available/agent-mail-client 中的 server_name"
+echo "1. 访问 Web 页面，直接在页面上进行扫码授权绑定，无需进入终端运行授权命令"
+echo "2. 修改 /etc/nginx/sites-available/agent-mail-client 中的 server_name 并重启 nginx"
 echo "3. 访问 http://your-server-ip"
