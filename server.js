@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const dbCache = require('./database');
@@ -9,10 +9,18 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const fs = require('fs');
+
 // 会话与管理员凭证
 const activeSessions = new Set();
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123';
+let ADMIN_USER = process.env.ADMIN_USER || 'admin';
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123';
+
+// 登录防暴破控制 (IP -> { count, lockedUntil })
+const failedLoginAttempts = new Map();
+
+// CLI OAuth 授权子进程
+let authProcess = null;
 
 // 鉴权中间件
 function authMiddleware(req, res, next) {
@@ -115,14 +123,131 @@ async function triggerDetailPrefetchQueue(messagesList) {
 
 // 用户登录接口
 app.post('/api/login', (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  const attempt = failedLoginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+  
+  if (attempt.lockedUntil > now) {
+    const minLeft = Math.ceil((attempt.lockedUntil - now) / 60000);
+    return res.status(429).json({ ok: false, error: `输错密码次数过多，请 ${minLeft} 分钟后再试` });
+  }
+
   const { username, password } = req.body;
   if (username === ADMIN_USER && password === ADMIN_PASSWORD) {
+    failedLoginAttempts.delete(ip);
     const token = crypto.randomBytes(32).toString('hex');
     activeSessions.add(token);
     res.json({ ok: true, data: { token } });
   } else {
-    res.status(401).json({ ok: false, error: '用户名或密码错误' });
+    attempt.count++;
+    if (attempt.count >= 5) {
+      attempt.lockedUntil = now + 15 * 60 * 1000;
+    }
+    failedLoginAttempts.set(ip, attempt);
+    const remaining = 5 - attempt.count;
+    const errorMsg = remaining > 0 ? `用户名或密码错误，还剩 ${remaining} 次尝试机会` : '输错密码次数过多，系统已锁定 15 分钟';
+    res.status(401).json({ ok: false, error: errorMsg });
   }
+});
+
+// CLI 授权状态检测接口
+app.get('/api/cli-auth-status', async (req, res) => {
+  try {
+    const result = await execCli('+me');
+    if (result && result.ok) {
+      const email = result.data?.aliases?.[0]?.email;
+      if (email) {
+        await dbCache.switchAccountDb(email).catch(console.error);
+      }
+      res.json({ authorized: true, email: email || '已授权' });
+    } else {
+      res.json({ authorized: false });
+    }
+  } catch (error) {
+    res.json({ authorized: false });
+  }
+});
+
+// 启动 CLI 授权流程
+app.post('/api/cli-auth-start', (req, res) => {
+  if (authProcess) {
+    authProcess.kill();
+  }
+  
+  authProcess = spawn('script', ['-q', '-c', 'agently-cli auth login', '/dev/null']);
+  let urlSent = false;
+  
+  const handleData = (data) => {
+    const output = data.toString();
+    const urlMatch = output.match(/https:\/\/agent\.qq\.com\/page\/oauth[^\s]+/);
+    if (urlMatch && !urlSent) {
+      urlSent = true;
+      res.json({ ok: true, url: urlMatch[0] });
+    }
+  };
+
+  authProcess.stdout.on('data', handleData);
+  authProcess.stderr.on('data', handleData);
+
+  authProcess.on('exit', (code) => {
+    if (!urlSent && !res.headersSent) {
+      res.status(500).json({ ok: false, error: '授权进程意外退出' });
+    }
+    authProcess = null;
+  });
+});
+
+// 退出底层 CLI 邮箱绑定
+app.post('/api/cli-auth-logout', async (req, res) => {
+  try {
+    // 必须同步等待完成，否则前端过快刷新会导致底层还没退出成功，从而仍被判定为 authorized
+    await execCli('auth logout');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Logout error:', e);
+    // 即使报错也认为退出成功（可能是没网或进程问题），放行前端跳转
+    res.json({ ok: true });
+  }
+});
+
+// 修改管理员凭证接口
+app.post('/api/credentials', (req, res) => {
+  const { newUsername, newPassword } = req.body;
+  if (!newUsername || !newPassword) {
+    return res.status(400).json({ ok: false, error: '用户名和密码不能为空' });
+  }
+  
+  ADMIN_USER = newUsername;
+  ADMIN_PASSWORD = newPassword;
+  
+  // 更新 .env 文件
+  const envPath = path.join(__dirname, '.env');
+  let envContent = '';
+  try {
+    if (fs.existsSync(envPath)) {
+      envContent = fs.readFileSync(envPath, 'utf8');
+    }
+  } catch (e) {}
+
+  const updateEnv = (content, key, value) => {
+    const regex = new RegExp(`^${key}=.*`, 'm');
+    if (regex.test(content)) {
+      return content.replace(regex, `${key}=${value}`);
+    } else {
+      return content + (content && !content.endsWith('\n') ? '\n' : '') + `${key}=${value}\n`;
+    }
+  };
+
+  envContent = updateEnv(envContent, 'ADMIN_USER', newUsername);
+  envContent = updateEnv(envContent, 'ADMIN_PASSWORD', newPassword);
+  
+  try {
+    fs.writeFileSync(envPath, envContent, 'utf8');
+  } catch (e) {
+    console.error('Failed to write .env file', e);
+  }
+
+  res.json({ ok: true });
 });
 
 // 获取用户信息
@@ -433,6 +558,10 @@ app.post('/api/trash', async (req, res) => {
     }
     
     const result = await execCli(args);
+    if (result && result.ok && !result.data?.confirmation_required) {
+      // 成功移入已删除，同步更新本地 SQLite 缓存目录为 'trash'
+      await dbCache.moveEmailDir(id, 'trash').catch(console.error);
+    }
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

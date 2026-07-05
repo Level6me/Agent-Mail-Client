@@ -1,14 +1,17 @@
+function getToken() { return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'); }
+function clearToken() { localStorage.removeItem('auth_token'); sessionStorage.removeItem('auth_token'); }
+
 const API_BASE = '';
 const originalFetch = window.fetch;
 window.fetch = async function(url, options = {}) {
-  const token = localStorage.getItem('auth_token');
+  const token = getToken();
   if (token && (typeof url === 'string' && url.includes('/api'))) {
     options.headers = options.headers || {};
     options.headers['Authorization'] = `Bearer ${token}`;
   }
   const res = await originalFetch(url, options);
   if (res.status === 401 && !url.includes('/api/login')) {
-    localStorage.removeItem('auth_token');
+    clearToken();
     const overlay = document.getElementById('loginOverlay');
     if (overlay) overlay.classList.remove('hidden');
   }
@@ -43,6 +46,10 @@ async function init() {
     }
   });
 
+  quill.setHTML = function(html) {
+    this.root.innerHTML = html;
+  };
+
   // 绑定 Quill 快捷键（Ctrl+Enter 极速发信）
   if (quill && quill.root) {
     quill.root.addEventListener('keydown', (e) => {
@@ -62,16 +69,27 @@ async function init() {
   // 绑定并控制安全登录逻辑
   setupLoginEvents();
 
-  const token = localStorage.getItem('auth_token');
+  const token = getToken();
   const overlay = document.getElementById('loginOverlay');
   if (token) {
-    if (overlay) overlay.classList.add('hidden');
+    if (overlay) {
+      overlay.classList.add('opacity-0', 'pointer-events-none');
+      setTimeout(() => overlay.classList.add('hidden'), 300);
+    }
     // 有 Token 则静默拉取首屏数据
-    await loadUserInfo();
-    await loadEmails();
-    await loadUnreadCount();
+    const isCliAuth = await verifyCliAuth();
+    if (isCliAuth) {
+      await loadUserInfo();
+      await loadEmails();
+      await loadUnreadCount();
+    } else {
+      await loadUserInfo(); // 只加载 user info 让他显示未绑定
+    }
   } else {
-    if (overlay) overlay.classList.remove('hidden');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      requestAnimationFrame(() => overlay.classList.remove('opacity-0', 'pointer-events-none'));
+    }
   }
 }
 
@@ -135,6 +153,8 @@ async function loadUserInfo() {
     if (data.ok && data.data.aliases.length > 0) {
       const email = data.data.aliases[0].email;
       document.getElementById('currentEmail').textContent = email;
+      const mobileEl = document.getElementById('currentEmailMobile');
+      if (mobileEl) mobileEl.textContent = email;
     }
   } catch (error) {
     console.error('加载用户信息失败:', error);
@@ -408,6 +428,8 @@ async function loadUnreadCount() {
     const data = await res.json();
     if (data.ok) {
       document.getElementById('unreadCount').textContent = data.data.count;
+      const mobileUnread = document.getElementById('unreadCountMobile');
+      if (mobileUnread) mobileUnread.textContent = data.data.count;
     }
   } catch (error) {
     console.error('加载未读计数失败:', error);
@@ -435,6 +457,7 @@ async function loadEmailDetail(id) {
 
     if (data.ok) {
       renderEmailDetail(data.data);
+      showEmailDetailMobile();
       selectedEmailId = id;
       
       // 点开后，若该邮件原为未读，自动前端标记该行已读
@@ -477,11 +500,16 @@ function renderEmailDetail(email) {
   const avatarBg = avatarColors[colorIndex];
 
   container.innerHTML = `
-    <div class="bg-white p-6 h-full flex flex-col fade-in-content">
+    <div class="bg-white p-4 md:p-6 h-full flex flex-col fade-in-content">
+      <!-- 移动端返回按钮 -->
+      <button id="mobileBackBtn" class="md:hidden flex items-center gap-2 text-gray-500 hover:text-black mb-3 -ml-1 transition-colors">
+        <i class="fas fa-arrow-left text-sm"></i>
+        <span class="text-xs font-medium">返回列表</span>
+      </button>
       <!-- 邮件标题 -->
-      <div class="mb-5">
-        <div class="flex items-start justify-between mb-4">
-          <h2 class="text-lg font-bold text-black mr-4">${escapeHtml(email.subject || '(无主题)')}</h2>
+      <div class="mb-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-base font-bold text-black mr-4">${escapeHtml(email.subject || '(无主题)')}</h2>
           <div class="flex items-center gap-1.5 flex-shrink-0">
             <!-- 一键复制按钮 -->
             <button id="copyDetailBtn" class="focus:outline-none p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-black transition-colors" title="复制正文">
@@ -495,7 +523,7 @@ function renderEmailDetail(email) {
         </div>
         
         <!-- 发件人圆形头像与账号 -->
-        <div class="flex items-center gap-3 py-2 border-b border-[#eaeaea]">
+        <div class="flex items-center gap-3 py-1.5 border-b border-[#eaeaea]">
           <div class="w-8 h-8 rounded-full ${avatarBg} text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
             ${firstChar}
           </div>
@@ -508,7 +536,7 @@ function renderEmailDetail(email) {
           </div>
         </div>
 
-        <div class="mt-3 text-xs text-gray-500 flex items-start gap-1">
+        <div class="mt-2 text-[11px] text-gray-500 flex items-center gap-1">
           <span class="font-medium text-gray-400 uppercase mr-1 flex-shrink-0">收件人:</span>
           <div id="recipientsSummary" class="flex-1 min-w-0 truncate text-gray-600 transition-opacity">
             ${escapeHtml(email.to?.map(t => t.email).join(', ') || '')}
@@ -540,7 +568,7 @@ function renderEmailDetail(email) {
       </div>
       
       <!-- 支持显示富文本 HTML 内容 -->
-      <div class="email-content prose max-w-none mb-6 border-t border-gray-100 pt-4 flex-1 overflow-y-auto">
+      <div class="email-content prose max-w-none mb-4 border-t border-gray-100 pt-2.5 flex-1 overflow-y-auto">
         ${email.body || `<pre class="whitespace-pre-wrap">${escapeHtml(email.body_text || '')}</pre>`}
       </div>
       
@@ -628,6 +656,14 @@ function renderEmailDetail(email) {
       downloadAttachment(btn.dataset.msg, btn.dataset.att);
     });
   });
+
+  // 移动端返回按钮
+  const mobileBackBtn = document.getElementById('mobileBackBtn');
+  if (mobileBackBtn) {
+    mobileBackBtn.addEventListener('click', () => {
+      hideEmailDetailMobile();
+    });
+  }
 }
 
 // 加载去重联系人列表
@@ -704,6 +740,20 @@ function openComposeModal(draftData = null) {
   modal.classList.remove('overflow-hidden');
   modal.className = 'fixed bottom-0 right-10 w-[520px] z-50';
   
+  const innerPanel = modal.querySelector('div');
+  if (innerPanel) {
+    innerPanel.className = 'bg-white rounded-t-lg shadow-2xl border border-[#eaeaea] flex flex-col overflow-hidden max-h-[80vh]';
+  }
+  const editArea = modal.querySelector('.overflow-y-auto');
+  if (editArea) {
+    editArea.classList.remove('max-h-none');
+    editArea.classList.add('max-h-[50vh]');
+  }
+  const bodyEditor = document.getElementById('bodyEditor');
+  if (bodyEditor) {
+    bodyEditor.style.minHeight = '200px';
+  }
+
   const maxIcon = document.querySelector('#maximizeCompose i');
   if (maxIcon) maxIcon.className = 'fas fa-expand text-xs';
 
@@ -835,7 +885,6 @@ async function sendEmail() {
     const ccArr = cc ? cc.split(',').map(e => e.trim()).filter(Boolean) : undefined;
 
     // 第一阶段
-    // 第一阶段
     const res1 = await fetch(`${API_BASE}/api/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -940,11 +989,11 @@ async function deleteEmail(id) {
       }
     };
 
-    if (data1.ok) {
+    if (data1.ok && !data1.data?.confirmation_required) {
       resetDetailPanel();
       loadEmails(currentFolder);
       showToast('邮件已移至已删除', undoCallback);
-    } else if (data1.error && data1.error.includes('confirmation')) {
+    } else if (data1.ok && data1.data?.confirmation_required) {
       const res2 = await fetch(`${API_BASE}/api/trash`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -958,10 +1007,10 @@ async function deleteEmail(id) {
         loadEmails(currentFolder);
         showToast('邮件已移至已删除', undoCallback);
       } else {
-        showToast('删除失败: ' + data2.error);
+        showToast('删除失败: ' + (data2.error || '未完成删除确认'));
       }
     } else {
-      showToast('删除失败: ' + data1.error);
+      showToast('删除失败: ' + (data1.error || '无法初始化删除流程'));
     }
   } catch (error) {
     showToast('删除失败: ' + error.message);
@@ -978,6 +1027,7 @@ function resetDetailPanel() {
       </div>
     </div>
   `;
+  hideEmailDetailMobile();
 }
 
 // 下载附件
@@ -1076,22 +1126,262 @@ function hideToast() {
   }, 300);
 }
 
+// ===== 移动端 UI 交互逻辑 =====
+function isMobile() {
+  return window.innerWidth <= 768;
+}
+
+function setupMobileUI() {
+  // 汉堡菜单 → 打开侧边栏
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const mobileSidebar = document.getElementById('mobileSidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+
+  function openSidebar() {
+    if (mobileSidebar) mobileSidebar.classList.add('open');
+  }
+  function closeSidebar() {
+    if (mobileSidebar) mobileSidebar.classList.remove('open');
+  }
+
+  if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', openSidebar);
+  if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeSidebar);
+  if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebar);
+
+  // 移动端文件夹切换
+  const mobileFolderNav = document.getElementById('mobileFolderNav');
+  if (mobileFolderNav) {
+    mobileFolderNav.querySelectorAll('.folder-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // 同步高亮
+        mobileFolderNav.querySelectorAll('.folder-btn').forEach(b => b.classList.remove('bg-gray-100'));
+        btn.classList.add('bg-gray-100');
+        // 同步桌面端文件夹按钮高亮
+        document.querySelectorAll('.desktop-sidebar .folder-btn').forEach(b => {
+          b.classList.remove('bg-gray-100');
+          if (b.dataset.folder === btn.dataset.folder) b.classList.add('bg-gray-100');
+        });
+        currentFolder = btn.dataset.folder;
+        loadEmails(currentFolder);
+        closeSidebar();
+      });
+    });
+  }
+
+  // 移动端搜索按钮 → 打开侧边栏的搜索框
+  const mobileSearchBtn = document.getElementById('mobileSearchBtn');
+  if (mobileSearchBtn) {
+    mobileSearchBtn.addEventListener('click', () => {
+      openSidebar();
+      setTimeout(() => {
+        const mobileSearchInput = document.getElementById('mobileSearchInput');
+        if (mobileSearchInput) mobileSearchInput.focus();
+      }, 300);
+    });
+  }
+
+  // 移动端搜索框的回车事件
+  const mobileSearchInput = document.getElementById('mobileSearchInput');
+  if (mobileSearchInput) {
+    mobileSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const query = mobileSearchInput.value.trim();
+        if (query) {
+          // 同步到桌面搜索框并触发搜索
+          const desktopInput = document.getElementById('searchInput');
+          if (desktopInput) desktopInput.value = query;
+          searchEmails(query);
+          closeSidebar();
+        }
+      }
+    });
+  }
+
+  // 移动端退出邮箱绑定按钮
+  const cliLogoutBtnMobile = document.getElementById('cliLogoutBtnMobile');
+  if (cliLogoutBtnMobile) {
+    cliLogoutBtnMobile.addEventListener('click', async () => {
+      if (confirm('确定要解除当前邮箱的绑定吗？解除后需要重新扫码授权。')) {
+        cliLogoutBtnMobile.disabled = true;
+        cliLogoutBtnMobile.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>';
+        try {
+          const res = await fetch(`${API_BASE}/api/cli-auth-logout`, { method: 'POST' });
+          if (res.ok) {
+            showToast('已解除绑定，请重新授权');
+            setTimeout(() => { window.location.href = '/?t=' + Date.now(); }, 500);
+          } else {
+            showToast('解绑失败');
+            cliLogoutBtnMobile.disabled = false;
+            cliLogoutBtnMobile.innerHTML = '<i class="fas fa-unlink text-[10px]"></i>';
+          }
+        } catch (e) {
+          showToast('网络错误');
+          cliLogoutBtnMobile.disabled = false;
+          cliLogoutBtnMobile.innerHTML = '<i class="fas fa-unlink text-[10px]"></i>';
+        }
+      }
+    });
+  }
+
+  // 阻止双指缩放 (iOS Safari 忽略 viewport user-scalable=no)
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // 阻止双击缩放
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+      e.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, false);
+
+  // 阻止手势事件 (Safari 独有)
+  document.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+  });
+}
+
+// 移动端：显示邮件详情全屏覆盖
+function showEmailDetailMobile() {
+  if (!isMobile()) return;
+  const detail = document.getElementById('emailDetail');
+  if (detail) detail.classList.add('mobile-show');
+}
+
+// 移动端：关闭邮件详情全屏覆盖
+function hideEmailDetailMobile() {
+  const detail = document.getElementById('emailDetail');
+  if (detail) detail.classList.remove('mobile-show');
+}
+
 
 // 更新未读计数
 function updateUnreadCount(emails) {
   const unreadCount = emails.filter(e => e.is_unread).length;
   document.getElementById('unreadCount').textContent = unreadCount;
+  const mobileUnread = document.getElementById('unreadCountMobile');
+  if (mobileUnread) mobileUnread.textContent = unreadCount;
 }
 
 // 设置事件监听
 function setupEventListeners() {
-  // 退出登录
+  // ===== 移动端交互逻辑 =====
+  setupMobileUI();
+
+  // 用户菜单交互
+  const userMenuBtn = document.getElementById('userMenuBtn');
+  const userMenuDropdown = document.getElementById('userMenuDropdown');
+  if (userMenuBtn && userMenuDropdown) {
+    userMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (userMenuDropdown.classList.contains('hidden')) {
+        userMenuDropdown.classList.remove('hidden');
+        requestAnimationFrame(() => {
+          userMenuDropdown.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+        });
+      } else {
+        userMenuDropdown.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+        setTimeout(() => userMenuDropdown.classList.add('hidden'), 200);
+      }
+    });
+    document.addEventListener('click', () => {
+      if (!userMenuDropdown.classList.contains('hidden')) {
+        userMenuDropdown.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+        setTimeout(() => userMenuDropdown.classList.add('hidden'), 200);
+      }
+    });
+  }
+
+  // 修改密码功能
+  const changeCredBtn = document.getElementById('changeCredBtn');
+  const credOverlay = document.getElementById('credOverlay');
+  const closeCredBtn = document.getElementById('closeCredBtn');
+  const submitCredBtn = document.getElementById('submitCredBtn');
+  
+  if (changeCredBtn && credOverlay) {
+    const hideCredModal = () => {
+      credOverlay.classList.add('opacity-0', 'pointer-events-none');
+      const content = document.getElementById('credModalContent');
+      if(content) content.classList.add('scale-95');
+      setTimeout(() => credOverlay.classList.add('hidden'), 300);
+    };
+
+    changeCredBtn.addEventListener('click', () => {
+      document.getElementById('newCredUser').value = '';
+      document.getElementById('newCredPass').value = '';
+      document.getElementById('credError').classList.add('hidden');
+      credOverlay.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        credOverlay.classList.remove('opacity-0', 'pointer-events-none');
+        const content = document.getElementById('credModalContent');
+        if(content) content.classList.remove('scale-95');
+      });
+    });
+
+    closeCredBtn.addEventListener('click', hideCredModal);
+
+    submitCredBtn.addEventListener('click', async () => {
+      const newUsername = document.getElementById('newCredUser').value.trim();
+      const newPassword = document.getElementById('newCredPass').value.trim();
+      const errEl = document.getElementById('credError');
+      
+      if (!newUsername || !newPassword) {
+        errEl.textContent = '用户名和密码不能为空';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      submitCredBtn.disabled = true;
+      submitCredBtn.innerHTML = `<i class="fas fa-spinner fa-spin text-[10px]"></i>保存中...`;
+
+      try {
+        const res = await originalFetch(`${API_BASE}/api/credentials`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({ newUsername, newPassword })
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.ok) {
+          hideCredModal();
+          showToast('修改成功，请重新登录');
+          setTimeout(() => {
+            document.getElementById('logoutBtn').click();
+          }, 1000);
+        } else {
+          errEl.textContent = data.error || '修改失败';
+          errEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        errEl.textContent = '网络错误: ' + e.message;
+        errEl.classList.remove('hidden');
+      } finally {
+        submitCredBtn.disabled = false;
+        submitCredBtn.innerHTML = '保存并重新登录';
+      }
+    });
+  }
+
+  // 退出 Web 端登录
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('auth_token');
+      clearToken();
       const overlay = document.getElementById('loginOverlay');
-      if (overlay) overlay.classList.remove('hidden');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        requestAnimationFrame(() => overlay.classList.remove('opacity-0', 'pointer-events-none'));
+      }
       // 清空用户名密码输入框
       const userEl = document.getElementById('loginUser');
       const passEl = document.getElementById('loginPass');
@@ -1099,6 +1389,32 @@ function setupEventListeners() {
       if (passEl) passEl.value = '';
       const errorEl = document.getElementById('loginError');
       if (errorEl) errorEl.classList.add('hidden');
+    });
+  }
+
+  // 退出邮箱绑定
+  const cliLogoutBtn = document.getElementById('cliLogoutBtn');
+  if (cliLogoutBtn) {
+    cliLogoutBtn.addEventListener('click', async () => {
+      if (confirm('确定要解除当前邮箱的绑定吗？解除后需要重新扫码授权。')) {
+        cliLogoutBtn.disabled = true;
+        cliLogoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>';
+        try {
+          const res = await fetch(`${API_BASE}/api/cli-auth-logout`, { method: 'POST' });
+          if (res.ok) {
+            showToast('已解除绑定，请重新授权');
+            setTimeout(() => { window.location.href = '/?t=' + Date.now(); }, 500);
+          } else {
+            showToast('解绑失败');
+            cliLogoutBtn.disabled = false;
+            cliLogoutBtn.innerHTML = '<i class="fas fa-unlink text-[10px]"></i>';
+          }
+        } catch (e) {
+          showToast('网络错误');
+          cliLogoutBtn.disabled = false;
+          cliLogoutBtn.innerHTML = '<i class="fas fa-unlink text-[10px]"></i>';
+        }
+      }
     });
   }
 
@@ -1186,10 +1502,48 @@ function setupEventListeners() {
         modal.style.height = '';
         modal.classList.remove('overflow-hidden');
 
-        modal.className = 'fixed bottom-10 right-[7.5vw] w-[85vw] h-[85vh] z-50 transition-all';
+        // 改为纯全屏布局 (inset-0, w-screen, h-screen)
+        modal.className = 'fixed inset-0 w-screen h-screen z-50 transition-all';
+        
+        // 让内部容器填充整个屏幕并去除边框/圆角
+        const innerPanel = modal.querySelector('div');
+        if (innerPanel) {
+          innerPanel.className = 'bg-white shadow-2xl flex flex-col overflow-hidden h-full rounded-none max-h-none border-none';
+        }
+        
+        // 允许内容区域自由伸展
+        const editArea = modal.querySelector('.overflow-y-auto');
+        if (editArea) {
+          editArea.classList.remove('max-h-[50vh]');
+          editArea.classList.add('max-h-none');
+        }
+        
+        // Quill 编辑器适当调高最小高度，获得更好全屏编辑体验
+        const bodyEditor = document.getElementById('bodyEditor');
+        if (bodyEditor) {
+          bodyEditor.style.minHeight = '450px';
+        }
+
         icon.className = 'fas fa-compress text-xs';
       } else {
         modal.className = 'fixed bottom-0 right-10 w-[520px] z-50 transition-all';
+        
+        const innerPanel = modal.querySelector('div');
+        if (innerPanel) {
+          innerPanel.className = 'bg-white rounded-t-lg shadow-2xl border border-[#eaeaea] flex flex-col overflow-hidden max-h-[80vh]';
+        }
+        
+        const editArea = modal.querySelector('.overflow-y-auto');
+        if (editArea) {
+          editArea.classList.remove('max-h-none');
+          editArea.classList.add('max-h-[50vh]');
+        }
+
+        const bodyEditor = document.getElementById('bodyEditor');
+        if (bodyEditor) {
+          bodyEditor.style.minHeight = '200px';
+        }
+
         icon.className = 'fas fa-expand text-xs';
       }
     });
@@ -1258,6 +1612,68 @@ function setupEventListeners() {
   }
 }
 
+async function verifyCliAuth() {
+  const cliOverlay = document.getElementById('cliAuthOverlay');
+  const cliLink = document.getElementById('cliAuthLink');
+  const cliLoading = document.getElementById('cliAuthLoading');
+  const cliRefreshBtn = document.getElementById('cliAuthRefreshBtn');
+
+  // 第一步：检查底层 CLI 授权状态（独立 try-catch，不受 auth-start 影响）
+  let isAuthorized = false;
+  try {
+    const res = await fetch(`${API_BASE}/api/cli-auth-status`);
+    const data = await res.json();
+    console.log('[verifyCliAuth] cli-auth-status response:', JSON.stringify(data));
+    isAuthorized = !!data.authorized;
+  } catch (e) {
+    console.error('[verifyCliAuth] cli-auth-status failed:', e);
+    isAuthorized = false;
+  }
+
+  if (isAuthorized) {
+    if (cliOverlay && !cliOverlay.classList.contains('hidden')) {
+      cliOverlay.classList.add('opacity-0', 'pointer-events-none');
+      setTimeout(() => cliOverlay.classList.add('hidden'), 300);
+    }
+    return true;
+  }
+
+  // 未授权：立刻清空邮件列表 DOM，防止旧邮件残留在页面上
+  const emailList = document.getElementById('emailList');
+  if (emailList) emailList.innerHTML = '';
+  const emailDetail = document.getElementById('emailDetail');
+  if (emailDetail) emailDetail.innerHTML = '';
+
+  // 显示 CLI 授权弹窗
+  if (cliOverlay) {
+    cliOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => cliOverlay.classList.remove('opacity-0', 'pointer-events-none'));
+  }
+
+  // 第二步：尝试启动 CLI 授权流程（失败也不影响弹窗显示）
+  try {
+    const startRes = await fetch(`${API_BASE}/api/cli-auth-start`, { method: 'POST' });
+    const startData = await startRes.json();
+    console.log('[verifyCliAuth] cli-auth-start response:', JSON.stringify(startData));
+    
+    if (startData.ok && startData.url) {
+      if (cliLoading) cliLoading.classList.add('hidden');
+      if (cliLink) {
+        cliLink.href = startData.url;
+        cliLink.textContent = startData.url;
+        cliLink.classList.remove('hidden');
+      }
+      if (cliRefreshBtn) {
+        cliRefreshBtn.classList.remove('hidden');
+        cliRefreshBtn.onclick = () => window.location.reload();
+      }
+    }
+  } catch (e) {
+    console.error('[verifyCliAuth] cli-auth-start failed (overlay still visible):', e);
+  }
+  return false;
+}
+
 // 工具函数
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -1322,12 +1738,13 @@ function showDetailSkeleton() {
 
 // 绑定登录页事件监听
 function setupLoginEvents() {
-  const submitBtn = document.getElementById('submitLoginBtn');
+  const submitBtn = document.getElementById('loginSubmit');
   const userEl = document.getElementById('loginUser');
   const passEl = document.getElementById('loginPass');
   const errorEl = document.getElementById('loginError');
-  const errorTxt = document.getElementById('loginErrorText');
+  const errorTxt = document.getElementById('loginErrorTxt');
   const overlay = document.getElementById('loginOverlay');
+  const rememberMe = document.getElementById('rememberMe');
 
   if (!submitBtn) return;
 
@@ -1341,7 +1758,7 @@ function setupLoginEvents() {
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin text-[10px]"></i><span>登录中...</span>`;
+    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin text-[10px]"></i>登录中...`;
 
     try {
       const res = await originalFetch(`${API_BASE}/api/login`, {
@@ -1351,16 +1768,25 @@ function setupLoginEvents() {
       });
       const data = await res.json();
       if (res.ok && data.ok && data.data.token) {
-        localStorage.setItem('auth_token', data.data.token);
-        errorEl.classList.add('hidden');
-        if (overlay) {
-          overlay.classList.add('hidden'); // 隐藏登录拦截页
+        if (rememberMe && rememberMe.checked) {
+          localStorage.setItem('auth_token', data.data.token);
+        } else {
+          sessionStorage.setItem('auth_token', data.data.token);
         }
         
-        // 成功登录后重新加载用户数据
-        await loadUserInfo();
-        await loadEmails();
-        await loadUnreadCount();
+        errorEl.classList.add('hidden');
+        if (overlay) {
+          overlay.classList.add('opacity-0', 'pointer-events-none');
+          setTimeout(() => overlay.classList.add('hidden'), 300);
+        }
+        
+        // 成功登录后先验证底层 CLI 授权状态
+        const isCliAuth = await verifyCliAuth();
+        if (isCliAuth) {
+          await loadUserInfo();
+          await loadEmails();
+          await loadUnreadCount();
+        }
       } else {
         errorTxt.textContent = data.error || '用户名或密码错误';
         errorEl.classList.remove('hidden');
@@ -1370,7 +1796,7 @@ function setupLoginEvents() {
       errorEl.classList.remove('hidden');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = `<span>安全登录</span><i class="fas fa-arrow-right text-[9px]"></i>`;
+      submitBtn.innerHTML = `登录系统`;
     }
   }
 
@@ -1378,12 +1804,14 @@ function setupLoginEvents() {
   
   // 支持回车一键登录
   [userEl, passEl].forEach(input => {
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleLogin();
-      }
-    });
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleLogin();
+        }
+      });
+    }
   });
 }
 

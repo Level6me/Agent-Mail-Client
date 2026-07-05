@@ -2,8 +2,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const crypto = require('crypto');
 
-const DB_PATH = path.join(__dirname, 'mail_cache.db');
+const DB_PATH_DEFAULT = path.join(__dirname, 'mail_cache_default.db');
 let db = null;
+let currentDbEmail = null;
 
 // AES-256-GCM 加解密配置
 const ENCRYPTION_KEY = Buffer.from(process.env.DB_ENC_KEY || '0123456789abcdef0123456789abcdef');
@@ -43,14 +44,48 @@ function decrypt(text) {
   }
 }
 
-// 初始化数据库
-function initDb() {
+// 切换/初始化指定账号的独立物理数据库
+function switchAccountDb(email) {
+  if (!email) return Promise.resolve();
+  const safeEmail = email.replace(/[^a-zA-Z0-9@.-]/g, '_');
+  if (currentDbEmail === safeEmail && db !== null) {
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(DB_PATH, (err) => {
-      if (err) {
-        return reject(err);
-      }
-      
+    const newDbPath = path.join(__dirname, `mail_cache_${safeEmail}.db`);
+    const openNewDb = () => {
+      db = new sqlite3.Database(newDbPath, (err) => {
+        if (err) return reject(err);
+        currentDbEmail = safeEmail;
+        initSchema().then(resolve).catch(reject);
+      });
+    };
+    
+    if (db) {
+      db.close(() => {
+        openNewDb();
+      });
+    } else {
+      openNewDb();
+    }
+  });
+}
+
+// 默认初始化（如果还没有账号，先生成一个默认库防止报错）
+function initDb() {
+  if (db) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(DB_PATH_DEFAULT, (err) => {
+      if (err) return reject(err);
+      currentDbEmail = 'default';
+      initSchema().then(resolve).catch(reject);
+    });
+  });
+}
+
+// 初始化表结构
+function initSchema() {
+  return new Promise((resolve, reject) => {
       db.serialize(() => {
         // 性能调优：开启 WAL 日志模式与 PRAGMA NORMAL
         db.run('PRAGMA journal_mode = WAL');
@@ -121,7 +156,6 @@ function initDb() {
           else resolve();
         });
       });
-    });
   });
 }
 
@@ -386,6 +420,18 @@ async function moveEmailDir(messageId, targetDir) {
   await run('UPDATE emails SET dir = ? WHERE message_id = ?', [targetDir, messageId]);
 }
 
+// 清除所有账号隔离缓存数据（登出解绑时调用，防止串号）
+async function clearAllCache() {
+  try {
+    await run('DELETE FROM emails');
+    await run('DELETE FROM sync_state');
+    await run('DELETE FROM drafts');
+    await run('DELETE FROM history_contacts');
+  } catch (e) {
+    console.error('Clear cache failed:', e);
+  }
+}
+
 module.exports = {
   initDb,
   saveEmailListSummary,
@@ -402,5 +448,7 @@ module.exports = {
   updateReadStatus,
   getHistoryContacts,
   getUnreadCount,
+  clearAllCache,
+  switchAccountDb,
   moveEmailDir
 };

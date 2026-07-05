@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Agent Mail Client</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -113,32 +113,145 @@
     .fade-in-content {
       animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     }
+
+    /* 默认隐藏移动端侧边栏（在宽屏下隐藏） */
+    #mobileSidebar {
+      display: none;
+    }
+
+    /* ===== 移动端自适应 ===== */
+    @media (max-width: 768px) {
+      body { overflow: auto; }
+      /* 侧边栏：默认隐藏，通过 JS 切换 */
+      #mobileSidebar {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: none;
+      }
+      #mobileSidebar.open {
+        display: flex;
+      }
+      #mobileSidebar .sidebar-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        backdrop-filter: blur(2px);
+      }
+      #mobileSidebar aside {
+        position: relative;
+        z-index: 81;
+        width: 260px;
+        max-width: 80vw;
+        height: 100%;
+        animation: slideInLeft 0.25s ease-out;
+      }
+      @keyframes slideInLeft {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
+      }
+      /* 桌面端侧边栏在移动端隐藏 */
+      .desktop-sidebar { display: none !important; }
+      /* 主内容区：单列全宽 */
+      .main-content { flex-direction: column !important; }
+      /* 邮件列表：全宽 */
+      .email-list-panel {
+        width: 100% !important;
+        border-right: none !important;
+        max-height: none !important;
+      }
+      /* 邮件详情：默认隐藏，展开时全屏 */
+      .email-detail-panel {
+        display: none !important;
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: #fff;
+        overflow-y: auto;
+      }
+      .email-detail-panel.mobile-show {
+        display: block !important;
+      }
+      /* 搜索框自适应 */
+      .search-box { width: 100% !important; min-width: 0 !important; }
+      .search-box input { width: 100% !important; }
+      /* Header 布局 */
+      .header-right { gap: 0.5rem !important; }
+      /* 写信弹窗：全屏 */
+      #composeModal {
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        bottom: 0 !important;
+      }
+      #composeModal > div {
+        border-radius: 12px 12px 0 0 !important;
+        max-height: 90vh !important;
+      }
+      /* 快速操作按钮在手机上常驻显示 */
+      .email-item .quick-actions {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+      /* 底部用户卡片退出按钮常驻显示 */
+      #cliLogoutBtn {
+        opacity: 1 !important;
+      }
+      /* Toast 居中 */
+      #toast {
+        left: 50% !important;
+        right: auto !important;
+        transform: translateX(-50%) !important;
+        max-width: 90vw;
+      }
+      /* 弹窗自适应 */
+      #credOverlay > div, #loginOverlay > div {
+        width: 90vw !important;
+        max-width: 360px;
+      }
+      #cliAuthOverlay > div {
+        width: 90vw !important;
+        max-width: 360px;
+      }
+    }
+
+    /* 小屏优化 (< 480px) */
+    @media (max-width: 480px) {
+      .email-item {
+        margin: 4px 8px;
+        padding: 10px !important;
+      }
+    }
   </style>
 </head>
 <body class="text-sm">
   <div id="app" class="h-screen flex flex-col">
     <!-- Header -->
-    <header class="paper-panel border-b px-6 py-4 flex items-center justify-between z-10">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-black flex items-center justify-center">
-          <i class="fas fa-envelope text-white text-sm"></i>
+    <header class="paper-panel border-b px-4 md:px-6 py-3 md:py-4 flex items-center justify-between z-10">
+      <div class="flex items-center gap-2 md:gap-3">
+        <!-- 移动端汉堡菜单 -->
+        <button id="mobileMenuBtn" class="md:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+          <i class="fas fa-bars text-sm"></i>
+        </button>
+        <div class="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-black flex items-center justify-center">
+          <i class="fas fa-envelope text-white text-xs md:text-sm"></i>
         </div>
         <div>
           <div class="flex items-center">
-            <h1 class="text-base font-bold tracking-tight text-black">Agent Mail</h1>
+            <h1 class="text-sm md:text-base font-bold tracking-tight text-black">Agent Mail</h1>
             <span id="offlineBadge" class="hidden text-[9px] font-bold text-red-500 border border-red-200 bg-red-50/50 px-1.5 py-0.5 rounded uppercase tracking-wider select-none animate-pulse ml-2">Offline</span>
           </div>
         </div>
       </div>
       
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 md:gap-4 header-right">
         <!-- 搜索框 -->
-        <div class="relative flex items-center">
+        <div class="relative flex items-center search-box hidden sm:flex">
           <input 
             type="text" 
             id="searchInput"
             placeholder="搜索邮件..." 
-            class="pl-9 pr-8 py-1.5 w-60 bg-white border border-[#eaeaea] rounded-lg focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-all text-xs"
+            class="pl-9 pr-8 py-1.5 w-40 md:w-60 bg-white border border-[#eaeaea] rounded-lg focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-all text-xs"
             autocomplete="off"
           >
           <i class="fas fa-search absolute left-3 text-gray-400 text-xs"></i>
@@ -151,41 +264,63 @@
             </button>
           </div>
         </div>
-        <!-- 写信按钮 -->
-        <button id="composeBtn" class="bg-black text-white px-3.5 py-1.5 rounded-lg hover:bg-gray-800 transition text-xs font-semibold">
-          <i class="fas fa-plus mr-1.5 text-[10px]"></i>写信
+        <!-- 移动端搜索按钮 -->
+        <button id="mobileSearchBtn" class="sm:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+          <i class="fas fa-search text-xs"></i>
         </button>
+        <!-- 写信按钮 -->
+        <button id="composeBtn" class="bg-black text-white px-2.5 md:px-3.5 py-1.5 rounded-lg hover:bg-gray-800 transition text-xs font-semibold">
+          <i class="fas fa-plus mr-0 md:mr-1.5 text-[10px]"></i><span class="hidden md:inline">写信</span>
+        </button>
+        
+        <!-- 用户菜单 -->
+        <div class="relative">
+          <button id="userMenuBtn" class="bg-white border border-gray-200 text-gray-600 px-2 md:px-3 py-1.5 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition text-xs font-semibold shadow-sm flex items-center gap-1.5">
+            <i class="fas fa-cog"></i><span class="hidden md:inline">设置</span>
+          </button>
+          
+          <!-- 下拉菜单 -->
+          <div id="userMenuDropdown" class="hidden absolute right-0 mt-2 w-36 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden transform opacity-0 transition-all duration-200 origin-top-right scale-95 pointer-events-none">
+            <button id="changeCredBtn" class="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <i class="fas fa-user-edit text-gray-400 w-3"></i>修改账号
+            </button>
+            <div class="border-t border-gray-100"></div>
+            <button id="logoutBtn" class="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
+              <i class="fas fa-sign-out-alt text-red-400 w-3"></i>退出登录
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
     <!-- Main Content -->
-    <div class="flex-1 flex overflow-hidden">
-      <!-- Sidebar -->
-      <aside class="paper-panel w-60 border-r p-4 flex flex-col justify-between">
+    <div class="flex-1 flex overflow-hidden main-content">
+      <!-- Sidebar (桌面端) -->
+      <aside class="paper-panel w-60 border-r p-4 flex flex-col justify-between desktop-sidebar">
         <nav class="space-y-1">
           <button data-folder="inbox" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center justify-between text-xs font-medium transition-all text-gray-900 active bg-gray-100">
-            <span class="flex items-center"><i class="fas fa-inbox mr-2 text-black text-sm"></i>收件箱</span>
+            <span class="flex items-center"><i class="fas fa-inbox fa-fw mr-2 text-black text-sm"></i>收件箱</span>
             <span id="unreadCount" class="bg-black text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">0</span>
           </button>
           <button data-folder="sent" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
-            <i class="fas fa-paper-plane mr-2 text-gray-400 text-sm"></i>已发送
+            <i class="fas fa-paper-plane fa-fw mr-2 text-gray-400 text-sm"></i>已发送
           </button>
           <button data-folder="starred" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
-            <i class="fas fa-star mr-2 text-yellow-500 text-sm"></i>星标邮件
+            <i class="fas fa-star fa-fw mr-2 text-yellow-500 text-sm"></i>星标邮件
           </button>
           <button data-folder="drafts" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
-            <i class="fas fa-file-alt mr-2 text-gray-400 text-sm"></i>草稿箱
+            <i class="fas fa-file-alt fa-fw mr-2 text-gray-400 text-sm"></i>草稿箱
           </button>
           <button data-folder="spam" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
-            <i class="fas fa-exclamation-triangle mr-2 text-gray-400 text-sm"></i>垃圾邮件
+            <i class="fas fa-exclamation-triangle fa-fw mr-2 text-gray-400 text-sm"></i>垃圾邮件
           </button>
           <button data-folder="trash" class="folder-btn w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
-            <i class="fas fa-trash mr-2 text-gray-400 text-sm"></i>已删除
+            <i class="fas fa-trash fa-fw mr-2 text-gray-400 text-sm"></i>已删除
           </button>
         </nav>
         
         <!-- 底栏用户卡片 -->
-        <div class="p-3 bg-[#fafafa] border border-[#eaeaea] rounded-lg flex items-center gap-2">
+        <div class="p-3 bg-[#fafafa] border border-[#eaeaea] rounded-lg flex items-center gap-2 group relative">
           <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
             <i class="fas fa-user-circle text-base"></i>
           </div>
@@ -193,14 +328,68 @@
             <div class="text-[9px] text-gray-400 uppercase font-semibold">Alias Address</div>
             <div id="currentEmail" class="text-xs font-medium text-gray-700 truncate">加载中...</div>
           </div>
-          <button id="logoutBtn" class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all" title="退出登录">
-            <i class="fas fa-sign-out-alt text-[10px]"></i>
+          <button id="cliLogoutBtn" class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100" title="退出邮箱绑定">
+            <i class="fas fa-unlink text-[10px]"></i>
           </button>
         </div>
       </aside>
 
+      <!-- 移动端侧边栏抽屉 -->
+      <div id="mobileSidebar">
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+        <aside class="paper-panel p-4 flex flex-col justify-between bg-white border-r border-[#eaeaea]">
+          <div>
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+              <span class="text-xs font-bold text-black">邮件文件夹</span>
+              <button id="closeSidebarBtn" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+                <i class="fas fa-times text-sm"></i>
+              </button>
+            </div>
+            <!-- 移动端搜索框 -->
+            <div class="relative flex items-center mb-3 sm:hidden">
+              <input type="text" id="mobileSearchInput" placeholder="搜索邮件..." class="pl-9 pr-3 py-2 w-full bg-gray-50 border border-[#eaeaea] rounded-lg focus:outline-none focus:ring-1 focus:ring-black focus:border-black text-xs" autocomplete="off">
+              <i class="fas fa-search absolute left-3 text-gray-400 text-xs"></i>
+            </div>
+            <nav class="space-y-1" id="mobileFolderNav">
+              <button data-folder="inbox" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center justify-between text-xs font-medium transition-all text-gray-900 bg-gray-100">
+                <span class="flex items-center"><i class="fas fa-inbox fa-fw mr-2 text-black text-sm"></i>收件箱</span>
+                <span id="unreadCountMobile" class="bg-black text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">0</span>
+              </button>
+              <button data-folder="sent" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
+                <i class="fas fa-paper-plane fa-fw mr-2 text-gray-400 text-sm"></i>已发送
+              </button>
+              <button data-folder="starred" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
+                <i class="fas fa-star fa-fw mr-2 text-yellow-500 text-sm"></i>星标邮件
+              </button>
+              <button data-folder="drafts" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
+                <i class="fas fa-file-alt fa-fw mr-2 text-gray-400 text-sm"></i>草稿箱
+              </button>
+              <button data-folder="spam" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
+                <i class="fas fa-exclamation-triangle fa-fw mr-2 text-gray-400 text-sm"></i>垃圾邮件
+              </button>
+              <button data-folder="trash" class="folder-btn w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100 flex items-center text-xs font-medium transition-all text-gray-600">
+                <i class="fas fa-trash fa-fw mr-2 text-gray-400 text-sm"></i>已删除
+              </button>
+            </nav>
+          </div>
+          <!-- 底栏用户卡片（移动端副本） -->
+          <div class="p-3 bg-[#fafafa] border border-[#eaeaea] rounded-lg flex items-center gap-2 mt-4">
+            <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
+              <i class="fas fa-user-circle text-base"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-[9px] text-gray-400 uppercase font-semibold">Alias Address</div>
+              <div id="currentEmailMobile" class="text-xs font-medium text-gray-700 truncate">加载中...</div>
+            </div>
+            <button id="cliLogoutBtnMobile" class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all" title="退出邮箱绑定">
+              <i class="fas fa-unlink text-[10px]"></i>
+            </button>
+          </div>
+        </aside>
+      </div>
+
       <!-- Email List -->
-      <div class="paper-panel w-96 border-r flex flex-col bg-white">
+      <div class="paper-panel w-full md:w-96 border-r flex flex-col bg-white email-list-panel">
         <!-- 列表控制栏 -->
         <div class="px-4 py-2.5 bg-[#fafafa] border-b border-[#eaeaea] flex items-center justify-between">
           <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">邮件列表</span>
@@ -218,7 +407,7 @@
       </div>
 
       <!-- Email Detail -->
-      <div id="emailDetail" class="flex-1 bg-white overflow-y-auto">
+      <div id="emailDetail" class="flex-1 bg-white overflow-y-auto email-detail-panel">
         <div class="h-full flex items-center justify-center text-gray-400">
           <div class="text-center">
             <div class="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-3">
@@ -293,6 +482,30 @@
     <span id="toastMsg"></span>
   </div>
 
+  <!-- 修改凭证弹窗 -->
+  <div id="credOverlay" class="fixed inset-0 z-50 bg-black/20 flex items-center justify-center transition-all duration-300 opacity-0 pointer-events-none hidden backdrop-blur-[2px]">
+    <div id="credModalContent" class="w-[320px] p-6 bg-white border border-[#eaeaea] rounded-xl shadow-xl space-y-4 flex flex-col transform scale-95 transition-transform duration-300">
+      <div class="flex justify-between items-center border-b border-gray-100 pb-3">
+        <h2 class="text-sm font-bold text-black">修改登录账户</h2>
+        <button id="closeCredBtn" class="text-gray-400 hover:text-black transition-colors"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">新用户名</label>
+          <input id="newCredUser" type="text" class="w-full px-3 py-2 text-xs border border-[#eaeaea] rounded-lg focus:outline-none focus:border-black transition-colors" />
+        </div>
+        <div>
+          <label class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">新密码</label>
+          <input id="newCredPass" type="password" class="w-full px-3 py-2 text-xs border border-[#eaeaea] rounded-lg focus:outline-none focus:border-black transition-colors" />
+        </div>
+        <div id="credError" class="hidden text-[10px] text-red-500 bg-red-50 p-2 rounded border border-red-100 font-medium text-center"></div>
+        <button id="submitCredBtn" class="w-full py-2 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition shadow-md mt-2 flex items-center justify-center gap-2">
+          保存并重新登录
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 全屏登录拦截面板 -->
   <div id="loginOverlay" class="fixed inset-0 z-50 bg-[#fafafa] flex items-center justify-center transition-all duration-300">
     <div class="w-[320px] p-7 bg-white border border-[#eaeaea] rounded-xl shadow-xl space-y-5 flex flex-col text-center">
@@ -316,18 +529,41 @@
           <label class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">密码</label>
           <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" class="w-full px-2.5 py-1.5 text-xs border border-[#eaeaea] rounded-lg bg-white placeholder-gray-300 focus:outline-none focus:border-black focus:ring-1 focus:ring-black/5 transition-all" />
         </div>
-      </div>
+        
+        <div class="flex items-center gap-1.5 mt-1">
+          <input type="checkbox" id="rememberMe" class="rounded border-gray-300 text-black focus:ring-black w-3 h-3" checked>
+          <label for="rememberMe" class="text-[10px] text-gray-500 cursor-pointer select-none">保持登录状态 (30天)</label>
+        </div>
 
-      <!-- 报错警示 (默认隐藏) -->
-      <div id="loginError" class="hidden text-[9px] text-red-500 text-left bg-red-50 border border-red-100 p-2 rounded-lg flex items-center gap-1.5">
-        <i class="fas fa-exclamation-circle flex-shrink-0"></i>
-        <span id="loginErrorText">用户名或密码错误</span>
+        <div id="loginError" class="hidden text-[10px] text-red-500 bg-red-50 p-2 rounded border border-red-100 font-medium text-center">
+          <i class="fas fa-exclamation-circle mr-1"></i><span id="loginErrorTxt"></span>
+        </div>
+        
+        <button id="loginSubmit" class="w-full py-2 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition shadow-md mt-2 flex items-center justify-center gap-2">
+          登录系统
+        </button>
       </div>
+    </div>
+  </div>
 
-      <!-- 提交按钮 -->
-      <button id="submitLoginBtn" class="w-full bg-black text-white text-[11px] font-semibold py-2 rounded-lg hover:bg-neutral-800 transition-colors focus:outline-none flex items-center justify-center gap-1.5">
-        <span>安全登录</span>
-        <i class="fas fa-arrow-right text-[9px]"></i>
+  <!-- CLI 扫码授权弹窗 -->
+  <div id="cliAuthOverlay" class="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center transition-all duration-300 opacity-0 pointer-events-none hidden backdrop-blur-[2px]">
+    <div class="w-[360px] p-8 bg-white border border-[#eaeaea] rounded-xl shadow-2xl flex flex-col items-center text-center transform scale-95 transition-transform duration-300 relative">
+      <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 mb-4 shadow-inner">
+        <i class="fas fa-qrcode text-xl"></i>
+      </div>
+      <h2 class="text-sm font-bold text-black mb-2">底层 CLI 尚未授权</h2>
+      <p class="text-[11px] text-gray-500 mb-5 leading-relaxed">系统检测到服务器底层的 Agently CLI 尚未绑定发信邮箱。<br/>请点击下方链接前往授权。</p>
+      
+      <div id="cliAuthLoading" class="w-full py-3 flex justify-center text-gray-400">
+        <i class="fas fa-spinner fa-spin text-lg"></i>
+      </div>
+      
+      <a id="cliAuthLink" href="#" target="_blank" class="hidden w-full break-all bg-gray-50 border border-gray-200 text-blue-600 text-[10px] p-3 rounded-lg hover:bg-gray-100 transition-colors font-mono mb-4 text-left">
+      </a>
+      
+      <button id="cliAuthRefreshBtn" class="w-full py-2.5 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition shadow-md flex items-center justify-center gap-2 hidden mt-2">
+        <i class="fas fa-check"></i>我已完成授权，刷新系统
       </button>
     </div>
   </div>
