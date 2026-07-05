@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { exec, spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const dbCache = require('./database');
@@ -42,10 +42,10 @@ app.use(express.json());
 app.use(authMiddleware);
 app.use(express.static('public'));
 
-// 执行 agently-cli 命令的辅助函数
-function execCli(args) {
+// 执行 agently-cli 命令的辅助函数 (使用 execFile 避免 shell 注入)
+function execCli(argsArray) {
   return new Promise((resolve, reject) => {
-    exec(`agently-cli ${args}`, { 
+    execFile('agently-cli', argsArray, { 
       maxBuffer: 10 * 1024 * 1024,
       timeout: 30000 
     }, (error, stdout, stderr) => {
@@ -65,7 +65,7 @@ function execCli(args) {
 // 后台异步静默同步邮件列表
 async function syncEmailsInBackground(dir, limit) {
   try {
-    const result = await execCli(`message +list --dir ${dir} --limit ${limit}`);
+    const result = await execCli(['message', '+list', '--dir', dir, '--limit', String(limit)]);
     if (result.ok && result.data) {
       const messagesList = result.data.data || [];
       // 静默写入本地 SQLite，自动解密/加密
@@ -102,7 +102,7 @@ async function triggerDetailPrefetchQueue(messagesList) {
     if (index >= idsToFetch.length) return;
     const messageId = idsToFetch[index++];
     
-    execCli(`message +read --id ${messageId}`)
+    execCli(['message', '+read', '--id', messageId])
       .then(async (result) => {
         if (result.ok && result.data) {
           await dbCache.saveEmailDetail(result.data);
@@ -153,7 +153,7 @@ app.post('/api/login', (req, res) => {
 // CLI 授权状态检测接口
 app.get('/api/cli-auth-status', async (req, res) => {
   try {
-    const result = await execCli('+me');
+    const result = await execCli(['+me']);
     if (result && result.ok) {
       const email = result.data?.aliases?.[0]?.email;
       if (email) {
@@ -201,7 +201,7 @@ app.post('/api/cli-auth-start', (req, res) => {
 app.post('/api/cli-auth-logout', async (req, res) => {
   try {
     // 必须同步等待完成，否则前端过快刷新会导致底层还没退出成功，从而仍被判定为 authorized
-    await execCli('auth logout');
+    await execCli(['auth', 'logout']);
     res.json({ ok: true });
   } catch (e) {
     console.error('Logout error:', e);
@@ -253,7 +253,7 @@ app.post('/api/credentials', (req, res) => {
 // 获取用户信息
 app.get('/api/me', async (req, res) => {
   try {
-    const result = await execCli('+me');
+    const result = await execCli(['+me']);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -312,12 +312,12 @@ app.get('/api/messages', async (req, res) => {
     }
 
     // 本地无缓存（冷启动）或翻页、强制刷新时的阻塞同步
-    let args = `message +list --dir ${dir} --limit ${limit}`;
-    if (cursor) args += ` --cursor ${cursor}`;
-    if (after) args += ` --after ${after}`;
-    if (before) args += ` --before ${before}`;
-    if (has_attachments === 'true') args += ` --has-attachments`;
-    if (is_unread === 'true') args += ` --is-unread`;
+    const args = ['message', '+list', '--dir', dir, '--limit', String(limit)];
+    if (cursor) { args.push('--cursor'); args.push(cursor); }
+    if (after) { args.push('--after'); args.push(after); }
+    if (before) { args.push('--before'); args.push(before); }
+    if (has_attachments === 'true') { args.push('--has-attachments'); }
+    if (is_unread === 'true') { args.push('--is-unread'); }
     
     const result = await execCli(args);
     
@@ -377,7 +377,7 @@ app.get('/api/messages/:id', async (req, res) => {
     }
 
     // 2. 缓存未命中时再冷启动命令行拉取
-    const result = await execCli(`message +read --id ${messageId}`);
+    const result = await execCli(['message', '+read', '--id', messageId]);
     if (result.ok && result.data) {
       await dbCache.saveEmailDetail(result.data);
       res.json(result);
@@ -491,16 +491,16 @@ app.post('/api/messages/:id/move', async (req, res) => {
 app.get('/api/search', async (req, res) => {
   try {
     const { q, search_in, from, to, dir, after, before, has_attachments, is_unread, limit = 20, cursor } = req.query;
-    let args = `message +search --q "${q || ''}" --limit ${limit}`;
-    if (search_in) args += ` --search-in ${search_in}`;
-    if (from) args += ` --from "${from}"`;
-    if (to) args += ` --to "${to}"`;
-    if (dir) args += ` --dir ${dir}`;
-    if (after) args += ` --after ${after}`;
-    if (before) args += ` --before ${before}`;
-    if (has_attachments === 'true') args += ` --has-attachments`;
-    if (is_unread === 'true') args += ` --is-unread`;
-    if (cursor) args += ` --cursor ${cursor}`;
+    const args = ['message', '+search', '--q', q || '', '--limit', String(limit)];
+    if (search_in) { args.push('--search-in'); args.push(search_in); }
+    if (from) { args.push('--from'); args.push(from); }
+    if (to) { args.push('--to'); args.push(to); }
+    if (dir) { args.push('--dir'); args.push(dir); }
+    if (after) { args.push('--after'); args.push(after); }
+    if (before) { args.push('--before'); args.push(before); }
+    if (has_attachments === 'true') { args.push('--has-attachments'); }
+    if (is_unread === 'true') { args.push('--is-unread'); }
+    if (cursor) { args.push('--cursor'); args.push(cursor); }
     
     const result = await execCli(args);
     if (result.ok && result.data) {
@@ -523,22 +523,27 @@ app.get('/api/search', async (req, res) => {
 app.post('/api/send', async (req, res) => {
   try {
     const { to, cc, subject, body, confirmation_token } = req.body;
-    let args = 'message +send';
+    const args = ['message', '+send'];
     
     if (to && to.length > 0) {
-      args += ` --to ${to.map(e => `"${e}"`).join(' ')}`;
+      args.push('--to');
+      to.forEach(e => args.push(e));
     }
     if (cc && cc.length > 0) {
-      args += ` --cc ${cc.map(e => `"${e}"`).join(' ')}`;
+      args.push('--cc');
+      cc.forEach(e => args.push(e));
     }
     if (subject) {
-      args += ` --subject "${subject}"`;
+      args.push('--subject');
+      args.push(subject);
     }
     if (body) {
-      args += ` --body "${body.replace(/"/g, '\\"')}"`;
+      args.push('--body');
+      args.push(body);
     }
     if (confirmation_token) {
-      args += ` --confirmation-token "${confirmation_token}"`;
+      args.push('--confirmation-token');
+      args.push(confirmation_token);
     }
     
     const result = await execCli(args);
@@ -552,9 +557,10 @@ app.post('/api/send', async (req, res) => {
 app.post('/api/trash', async (req, res) => {
   try {
     const { id, confirmation_token } = req.body;
-    let args = `message +trash --id ${id}`;
+    const args = ['message', '+trash', '--id', id];
     if (confirmation_token) {
-      args += ` --confirmation-token "${confirmation_token}"`;
+      args.push('--confirmation-token');
+      args.push(confirmation_token);
     }
     
     const result = await execCli(args);
@@ -572,7 +578,7 @@ app.post('/api/trash', async (req, res) => {
 app.get('/api/attachments/:msgId/:attId', async (req, res) => {
   try {
     const { msgId, attId } = req.params;
-    const result = await execCli(`message +attachment --id ${msgId} --attachment-id ${attId}`);
+    const result = await execCli(['message', '+attachment', '--id', msgId, '--attachment-id', attId]);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
