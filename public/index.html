@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Mail Client</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .email-content img { max-width: 100%; height: auto; }
+    .email-content { word-wrap: break-word; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div id="app" class="h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-800">
+          <i class="fas fa-envelope text-blue-600 mr-2"></i>
+          Agent Mail Client
+        </h1>
+        <div class="flex items-center gap-4">
+          <div class="relative">
+            <input 
+              type="text" 
+              id="searchInput"
+              placeholder="搜索邮件..." 
+              class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+          </div>
+          <button id="composeBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+            <i class="fas fa-plus mr-2"></i>写信
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+      <!-- Sidebar -->
+      <aside class="w-64 bg-white border-r border-gray-200 p-4">
+        <nav class="space-y-2">
+          <button data-folder="inbox" class="folder-btn w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center justify-between active">
+            <span><i class="fas fa-inbox mr-2"></i>收件箱</span>
+            <span id="unreadCount" class="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">0</span>
+          </button>
+          <button data-folder="sent" class="folder-btn w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100">
+            <i class="fas fa-paper-plane mr-2"></i>已发送
+          </button>
+          <button data-folder="spam" class="folder-btn w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100">
+            <i class="fas fa-exclamation-triangle mr-2"></i>垃圾邮件
+          </button>
+          <button data-folder="trash" class="folder-btn w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100">
+            <i class="fas fa-trash mr-2"></i>已删除
+          </button>
+        </nav>
+        <div class="mt-8 p-4 bg-gray-50 rounded-lg">
+          <div class="text-xs text-gray-500 mb-2">当前邮箱</div>
+          <div id="currentEmail" class="text-sm font-medium text-gray-800">加载中...</div>
+        </div>
+      </aside>
+
+      <!-- Email List -->
+      <div id="emailList" class="w-96 bg-white border-r border-gray-200 overflow-y-auto">
+        <div class="p-4 text-center text-gray-500">
+          <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+          <p>加载中...</p>
+        </div>
+      </div>
+
+      <!-- Email Detail -->
+      <div id="emailDetail" class="flex-1 bg-gray-50 overflow-y-auto">
+        <div class="h-full flex items-center justify-center text-gray-400">
+          <div class="text-center">
+            <i class="fas fa-envelope-open text-6xl mb-4"></i>
+            <p>选择一封邮件查看详情</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compose Modal -->
+  <div id="composeModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-xl font-bold">写邮件</h2>
+        <button id="closeCompose" class="text-gray-400 hover:text-gray-600">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-6">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">收件人</label>
+            <input type="text" id="toInput" placeholder="输入邮箱地址，多个地址用逗号分隔" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">抄送</label>
+            <input type="text" id="ccInput" placeholder="可选" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">主题</label>
+            <input type="text" id="subjectInput" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">正文</label>
+            <textarea id="bodyInput" rows="12" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+        <button id="cancelCompose" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+        <button id="sendEmail" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
