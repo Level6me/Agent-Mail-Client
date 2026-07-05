@@ -1085,6 +1085,23 @@ function updateUnreadCount(emails) {
 
 // 设置事件监听
 function setupEventListeners() {
+  // 退出登录
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('auth_token');
+      const overlay = document.getElementById('loginOverlay');
+      if (overlay) overlay.classList.remove('hidden');
+      // 清空用户名密码输入框
+      const userEl = document.getElementById('loginUser');
+      const passEl = document.getElementById('loginPass');
+      if (userEl) userEl.value = '';
+      if (passEl) passEl.value = '';
+      const errorEl = document.getElementById('loginError');
+      if (errorEl) errorEl.classList.add('hidden');
+    });
+  }
+
   // 文件夹切换
   document.querySelectorAll('.folder-btn').forEach(btn => {
     btn.addEventListener('click', () => {
