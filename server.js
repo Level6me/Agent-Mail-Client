@@ -40,7 +40,7 @@ function authMiddleware(req, res, next) {
 app.use(cors());
 app.use(express.json());
 app.use(authMiddleware);
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // 执行 agently-cli 命令的辅助函数 (使用 execFile 避免 shell 注入)
 function execCli(argsArray) {

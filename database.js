@@ -424,9 +424,8 @@ async function moveEmailDir(messageId, targetDir) {
 async function clearAllCache() {
   try {
     await run('DELETE FROM emails');
-    await run('DELETE FROM sync_state');
+    await run('DELETE FROM sync_history');
     await run('DELETE FROM drafts');
-    await run('DELETE FROM history_contacts');
   } catch (e) {
     console.error('Clear cache failed:', e);
   }

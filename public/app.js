@@ -706,7 +706,7 @@ function handleAutocomplete(inputVal) {
   }
 
   listEl.innerHTML = matches.map(c => `
-    <div class="autocomplete-item p-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-b border-gray-100 last:border-0" data-email="${c.email}">
+    <div class="autocomplete-item p-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-b border-gray-100 last:border-0" data-email="${escapeHtml(c.email)}">
       <span class="font-medium text-gray-800 text-sm">${escapeHtml(c.name || 'Unknown')}</span>
       <span class="text-xs text-gray-400">${escapeHtml(c.email)}</span>
     </div>
