@@ -261,20 +261,20 @@ function renderSingleEmailItemMarkup(email) {
   }
 
   return `
-    <div class="email-item border-b border-gray-200 p-3 hover:bg-gray-50 cursor-pointer flex items-start relative ${isUnread ? 'bg-gray-50/50' : ''}" data-id="${email.message_id}" data-draft="${email.is_draft ? 'true' : 'false'}" data-folder="${email.dir || 'inbox'}">
+    <div class="email-item border-b border-gray-200 p-3 hover:bg-gray-50 cursor-pointer flex items-start relative ${isUnread ? 'bg-gray-50/50' : ''}" data-id="${escapeHtml(email.message_id)}" data-draft="${email.is_draft ? 'true' : 'false'}" data-folder="${escapeHtml(email.dir || 'inbox')}">
       
       <!-- 左侧状态控制栏（已读未读与星标并列） -->
       <div class="flex-shrink-0 flex flex-col items-center gap-2 mr-3 mt-0.5 w-5">
         <!-- 已读未读小圈 -->
         ${!email.is_draft ? `
-          <button class="read-toggle-btn p-0.5 focus:outline-none" data-id="${email.message_id}" data-read="${email.is_read ? 'true' : 'false'}" title="切换已读/未读">
+          <button class="read-toggle-btn p-0.5 focus:outline-none" data-id="${escapeHtml(email.message_id)}" data-read="${email.is_read ? 'true' : 'false'}" title="切换已读/未读">
             <div class="w-2 h-2 rounded-full ${email.is_read ? 'border border-gray-300 bg-transparent' : 'bg-black'} transition-all"></div>
           </button>
         ` : '<div class="w-2 h-2"></div>'}
         
         <!-- 星标星星 -->
         ${!email.is_draft ? `
-          <button class="star-btn focus:outline-none p-0.5" data-id="${email.message_id}">
+          <button class="star-btn focus:outline-none p-0.5" data-id="${escapeHtml(email.message_id)}">
             <i class="${starIcon} hover:text-yellow-500 text-[11px]"></i>
           </button>
         ` : ''}
@@ -516,7 +516,7 @@ function renderEmailDetail(email) {
               <i class="far fa-copy text-sm"></i>
             </button>
             <!-- 星标按钮 -->
-            <button id="detailStarBtn" class="focus:outline-none p-1 rounded hover:bg-gray-100" data-id="${email.message_id}">
+            <button id="detailStarBtn" class="focus:outline-none p-1 rounded hover:bg-gray-100" data-id="${escapeHtml(email.message_id)}">
               <i class="${starIcon} text-base hover:scale-105 transition-transform"></i>
             </button>
           </div>
@@ -525,7 +525,7 @@ function renderEmailDetail(email) {
         <!-- 发件人圆形头像与账号 -->
         <div class="flex items-center gap-3 py-1.5 border-b border-[#eaeaea]">
           <div class="w-8 h-8 rounded-full ${avatarBg} text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-            ${firstChar}
+            ${escapeHtml(firstChar)}
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
@@ -585,7 +585,7 @@ function renderEmailDetail(email) {
                   <span class="text-sm">${escapeHtml(att.filename)}</span>
                   <span class="text-xs text-gray-500 ml-2">(${formatFileSize(att.size)})</span>
                 </div>
-                <button class="download-att text-blue-600 hover:text-blue-800 text-sm" data-msg="${email.message_id}" data-att="${att.attachment_id}">
+                <button class="download-att text-blue-600 hover:text-blue-800 text-sm" data-msg="${escapeHtml(email.message_id)}" data-att="${escapeHtml(att.attachment_id)}">
                   <i class="fas fa-download mr-1"></i>下载
                 </button>
               </div>
@@ -844,7 +844,7 @@ function openReplyModal(email) {
   openComposeModal();
   document.getElementById('toInput').value = email.from?.email || '';
   document.getElementById('subjectInput').value = `Re: ${email.subject || ''}`;
-  quill.setHTML(`<br><br><hr>在 ${formatDate(email.created_at)}，${email.from?.name || email.from?.email || ''} 写道：<br>${email.body || email.body_text || ''}`);
+  quill.setHTML(`<br><br><hr>在 ${formatDate(email.created_at)}，${escapeHtml(email.from?.name || email.from?.email || '')} 写道：<br>${email.body || escapeHtml(email.body_text || '')}`);
 }
 
 // 打开转发模态框
@@ -852,7 +852,7 @@ function openForwardModal(email) {
   openComposeModal();
   document.getElementById('subjectInput').value = `Fwd: ${email.subject || ''}`;
   const toStr = email.to?.map(t => `${t.name || ''} <${t.email}>`).join(', ') || '';
-  quill.setHTML(`<br><br><hr>转发的邮件：<br>发件人: ${email.from?.name || ''} &lt;${email.from?.email || ''}&gt;<br>日期: ${formatDate(email.created_at)}<br>主题: ${email.subject || ''}<br>收件人: ${toStr}<br><br>${email.body || email.body_text || ''}`);
+  quill.setHTML(`<br><br><hr>转发的邮件：<br>发件人: ${escapeHtml(email.from?.name || '')} &lt;${escapeHtml(email.from?.email || '')}&gt;<br>日期: ${formatDate(email.created_at)}<br>主题: ${escapeHtml(email.subject || '')}<br>收件人: ${escapeHtml(toStr)}<br><br>${email.body || escapeHtml(email.body_text || '')}`);
 }
 
 // 发送邮件
@@ -1678,7 +1678,7 @@ async function verifyCliAuth() {
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
-  return div.innerHTML;
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function formatDate(dateStr) {
